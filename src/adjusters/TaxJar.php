@@ -16,6 +16,7 @@ use craft\commerce\models\Address;
 use craft\commerce\models\OrderAdjustment;
 use craft\commerce\Plugin;
 use craft\commerce\taxjar\TaxJar as TaxJarPlugin;
+use craft\commerce\taxjar\events\ModifyOrderTaxDataEvent;
 use DvK\Vat\Validator;
 use TaxJar\Exception;
 
@@ -30,6 +31,7 @@ use TaxJar\Exception;
 class TaxJar extends Component implements AdjusterInterface
 {
     const ADJUSTMENT_TYPE = 'tax';
+    const EVENT_MODIFY_ORDER_TAX_DATA = 'modifyOrderTaxDataEvent';
 
     /**
      * @var Order
@@ -161,7 +163,8 @@ class TaxJar extends Component implements AdjusterInterface
 
         if (!$orderData) {
 
-            $orderData = $client->taxForOrder([
+            // Set-up order data
+            $orderData = [
                 'from_country' => $storeLocation->getCountry()->iso ?? '',
                 'from_zip' => $storeLocation->zipCode ?? '',
                 'from_state' => $storeLocation->getState()->abbreviation ?? '',
@@ -171,7 +174,16 @@ class TaxJar extends Component implements AdjusterInterface
                 //'amount' => We pass line items so not needed
                 'shipping' => $this->_order->getTotalShippingCost(),
                 'line_items' => $lineItems
+            ];
+
+            // Fire a 'ModifyOrderTaxData' event to allow folks to adjust order data
+            $event = new ModifyOrderTaxDataEvent([
+                'orderData' => $orderData,
+                'order' => $this->_order
             ]);
+            $this->trigger(self::EVENT_MODIFY_ORDER_TAX_DATA, $event);
+
+            $orderData = $client->taxForOrder($event->orderData);
 
             // Save data into cache
             Craft::$app->getCache()->set($cacheKey, $orderData);
