@@ -16,7 +16,6 @@ use craft\commerce\models\Address;
 use craft\commerce\models\OrderAdjustment;
 use craft\commerce\Plugin;
 use craft\commerce\taxjar\TaxJar as TaxJarPlugin;
-use craft\commerce\taxjar\events\ModifyOrderTaxDataEvent;
 use DvK\Vat\Validator;
 use TaxJar\Exception;
 
@@ -30,8 +29,13 @@ use TaxJar\Exception;
  */
 class TaxJar extends Component implements AdjusterInterface
 {
+    // Constants
+    // =========================================================================
+
     const ADJUSTMENT_TYPE = 'tax';
-    const EVENT_MODIFY_ORDER_TAX_DATA = 'modifyOrderTaxDataEvent';
+
+    // Properties
+    // =========================================================================
 
     /**
      * @var Order
@@ -47,6 +51,9 @@ class TaxJar extends Component implements AdjusterInterface
      * @var mixed
      */
     private $_taxesByOrderHash;
+
+    // Public Methods
+    // =========================================================================
 
     /**
      * @inheritdoc
@@ -71,7 +78,7 @@ class TaxJar extends Component implements AdjusterInterface
             }
         }
 
-        if (!$this->_address) {
+        if (!$this->_address || !$this->_order->getLineItems()) {
             return [];
         }
 
@@ -95,15 +102,41 @@ class TaxJar extends Component implements AdjusterInterface
             return [];
         }
 
+        $adjustments = [];
+        $orderLevelTaxes = $orderTaxes->amount_to_collect;
+
+        if (isset($orderTaxes->breakdown)) {
+            $lineItems = $this->_order->getLineItems();
+            foreach ($orderTaxes->breakdown->line_items as $i => $lineItem) {
+                $adjustment = new OrderAdjustment();
+                $adjustment->type = self::ADJUSTMENT_TYPE;
+                $adjustment->name = Craft::t('commerce', 'Sales Tax');
+                $adjustment->amount = $lineItem->tax_collectable;
+                $adjustment->description = "Combined tax rate {$this->_getPercent($lineItem->combined_tax_rate)}";
+                $adjustment->orderId = $this->_order->id;
+                $adjustment->sourceSnapshot = [];
+                if (strpos($lineItem->id, "temp-{$this->_order->id}-") !== false) {
+                    $adjustment->setLineItem($lineItems[$i]);
+                } else {
+                    $adjustment->lineItemId = $lineItem->id;
+                }
+
+                $orderLevelTaxes -= $lineItem->tax_collectable;
+                $adjustments[] = $adjustment;
+            }
+        }
+
         $adjustment = new OrderAdjustment();
         $adjustment->type = self::ADJUSTMENT_TYPE;
-        $adjustment->name = Craft::t('commerce', 'Tax');
-        $adjustment->amount = $orderTaxes->amount_to_collect;
-        $adjustment->description = '';
+        $adjustment->name = Craft::t('commerce', 'Sales Tax');
+        $adjustment->amount = $orderLevelTaxes;
+        $adjustment->description = "Combined tax rate {$this->_getPercent($orderTaxes->rate)}";
         $adjustment->setOrder($this->_order);
         $adjustment->sourceSnapshot = json_decode(json_encode($orderTaxes), true);
 
-        return [$adjustment];
+        $adjustments[] = $adjustment;
+
+        return $adjustments;
     }
 
     /**
@@ -136,25 +169,10 @@ class TaxJar extends Component implements AdjusterInterface
     private function _getOrderTaxData()
     {
         $orderHash = $this->_getOrderHash();
-        $storeLocation = Plugin::getInstance()->getAddresses()->getStoreLocationAddress();
-        $client = TaxJarPlugin::getInstance()->getApi()->getClient();
 
         // Do we already have it on this request?
         if (isset($this->_taxesByOrderHash[$orderHash]) && $this->_taxesByOrderHash[$orderHash] != false) {
             return $this->_taxesByOrderHash[$orderHash];
-        }
-
-        $lineItems = [];
-
-        foreach ($this->_order->getLineItems() as $lineItem) {
-            $category = Plugin::getInstance()->getTaxCategories()->getTaxCategoryById($lineItem->taxCategoryId);
-            $lineItems[] = [
-                'id' => $lineItem->id,
-                'quantity' => $lineItem->qty,
-                'unit_price' => $lineItem->salePrice,
-                'discount' => $lineItem->getDiscount() * -1,
-                'product_tax_code' => $category ? $category->handle : null
-            ];
         }
 
         $cacheKey = 'taxjar-' . $orderHash;
@@ -162,28 +180,15 @@ class TaxJar extends Component implements AdjusterInterface
         $orderData = Craft::$app->getCache()->get($cacheKey);
 
         if (!$orderData) {
+            $api = TaxJarPlugin::getInstance()->getApi();
 
-            // Set-up order data
-            $orderData = [
-                'from_country' => $storeLocation->getCountry()->iso ?? '',
-                'from_zip' => $storeLocation->zipCode ?? '',
-                'from_state' => $storeLocation->getState()->abbreviation ?? '',
-                'to_country' => $this->_address->getCountry()->iso ?? '',
-                'to_zip' => $this->_address->zipCode ?? '',
-                'to_state' => $this->_address->getState()->abbreviation ?? '',
-                //'amount' => We pass line items so not needed
-                'shipping' => $this->_order->getTotalShippingCost(),
-                'line_items' => $lineItems
-            ];
+            $orderParams = array_merge(
+                $api->getFromParams(),
+                $api->getToParams($this->_address),
+                $api->getAmountsParams($this->_order, false)
+            );
 
-            // Fire a 'ModifyOrderTaxData' event to allow folks to adjust order data
-            $event = new ModifyOrderTaxDataEvent([
-                'orderData' => $orderData,
-                'order' => $this->_order
-            ]);
-            $this->trigger(self::EVENT_MODIFY_ORDER_TAX_DATA, $event);
-
-            $orderData = $client->taxForOrder($event->orderData);
+            $orderData = $api->getClient()->taxForOrder($orderParams);
 
             // Save data into cache
             Craft::$app->getCache()->set($cacheKey, $orderData);
@@ -192,5 +197,14 @@ class TaxJar extends Component implements AdjusterInterface
         $this->_taxesByOrderHash[$orderHash] = $orderData;
 
         return $this->_taxesByOrderHash[$orderHash];
+    }
+
+    /**
+     * @param float $rate
+     * @return string
+     */
+    private function _getPercent(float $rate): string
+    {
+        return ($rate * 100) . '%';
     }
 }
