@@ -150,6 +150,7 @@ class TaxJar extends Component implements AdjusterInterface
         $count = 0;
         foreach ($this->_order->getLineItems() as $item) {
             $count++;
+            // NOTE: Make sure $item->taxCategoryId is being accounted for here (when pulling in changes from upstream)
             $lineItems = $count . ':' . $item->getOptionsSignature() . ':' . $item->qty . ':' . $item->getSubtotal() . ':' . $item->taxCategoryId;
         }
         $price = $this->_order->getTotalPrice();
