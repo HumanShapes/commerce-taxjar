@@ -16,6 +16,8 @@ use craft\commerce\models\Address;
 use craft\commerce\models\OrderAdjustment;
 use craft\commerce\Plugin;
 use craft\commerce\taxjar\TaxJar as TaxJarPlugin;
+use craft\commerce\taxjar\events\SetAddressForTaxEvent;
+use yii\base\Event;
 use DvK\Vat\Validator;
 use TaxJar\Exception;
 
@@ -33,6 +35,7 @@ class TaxJar extends Component implements AdjusterInterface
     // =========================================================================
 
     const ADJUSTMENT_TYPE = 'tax';
+    const SET_ADDRESS_FOR_TAX_EVENT = 'setAddressForTaxEvent';
 
     // Properties
     // =========================================================================
@@ -78,6 +81,15 @@ class TaxJar extends Component implements AdjusterInterface
             }
         }
 
+        $event = new SetAddressForTaxEvent([
+            'order' => $this->_order,
+            'address' => $this->_address
+        ]);
+
+        Event::trigger(static::class, self::SET_ADDRESS_FOR_TAX_EVENT, $event);
+
+        $this->_address = $event->address;
+
         if (!$this->_address || !$this->_order->getLineItems()) {
             return [];
         }
@@ -102,41 +114,15 @@ class TaxJar extends Component implements AdjusterInterface
             return [];
         }
 
-        $adjustments = [];
-        $orderLevelTaxes = $orderTaxes->amount_to_collect;
-
-        if (isset($orderTaxes->breakdown)) {
-            $lineItems = $this->_order->getLineItems();
-            foreach ($orderTaxes->breakdown->line_items as $i => $lineItem) {
-                $adjustment = new OrderAdjustment();
-                $adjustment->type = self::ADJUSTMENT_TYPE;
-                $adjustment->name = Craft::t('commerce', 'Sales Tax');
-                $adjustment->amount = $lineItem->tax_collectable;
-                $adjustment->description = "Combined tax rate {$this->_getPercent($lineItem->combined_tax_rate)}";
-                $adjustment->orderId = $this->_order->id;
-                $adjustment->sourceSnapshot = [];
-                if (strpos($lineItem->id, "temp-{$this->_order->id}-") !== false) {
-                    $adjustment->setLineItem($lineItems[$i]);
-                } else {
-                    $adjustment->lineItemId = $lineItem->id;
-                }
-
-                $orderLevelTaxes -= $lineItem->tax_collectable;
-                $adjustments[] = $adjustment;
-            }
-        }
-
         $adjustment = new OrderAdjustment();
         $adjustment->type = self::ADJUSTMENT_TYPE;
         $adjustment->name = Craft::t('commerce', 'Sales Tax');
-        $adjustment->amount = $orderLevelTaxes;
+        $adjustment->amount = $orderTaxes->amount_to_collect;
         $adjustment->description = "Combined tax rate {$this->_getPercent($orderTaxes->rate)}";
         $adjustment->setOrder($this->_order);
         $adjustment->sourceSnapshot = json_decode(json_encode($orderTaxes), true);
 
-        $adjustments[] = $adjustment;
-
-        return $adjustments;
+        return [$adjustment];
     }
 
     /**
@@ -150,7 +136,7 @@ class TaxJar extends Component implements AdjusterInterface
         $count = 0;
         foreach ($this->_order->getLineItems() as $item) {
             $count++;
-            // NOTE: Make sure $item->taxCategoryId is being accounted for here (when pulling in changes from upstream)
+            // NOTE: (Cody / Noihsaf Change) Make sure $item->taxCategoryId is being accounted for here (when pulling in changes from upstream)
             $lineItems = $count . ':' . $item->getOptionsSignature() . ':' . $item->qty . ':' . $item->getSubtotal() . ':' . $item->taxCategoryId;
         }
         $price = $this->_order->getTotalPrice();

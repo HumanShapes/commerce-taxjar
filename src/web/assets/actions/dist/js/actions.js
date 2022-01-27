@@ -204,7 +204,7 @@ Craft.Commerce.TaxJarRefundModal = Garnish.Modal.extend(
             if ($('#tax-order').length) {
                 sum += Number($('#tax-order').val());
             }
-
+            
             var deduction = $('#deduction-order');
             deduction.attr('max', sum);
             if (deduction.val().length && Number(deduction.val()) > sum) {

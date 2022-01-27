@@ -169,6 +169,8 @@ class OrdersController extends BaseCpController
         $plugin = Plugin::getInstance();
         $order = $plugin->getOrders()->getOrderById($orderId);
 
+        $lineItemTaxes = $this->_getLineItemTaxesByLineItemUid($order);
+
         $refundIds = (new Query())
             ->select(['id'])
             ->from('{{%taxjar_refunds}}')
@@ -196,6 +198,7 @@ class OrdersController extends BaseCpController
 
         $modalHtml = $view->renderTemplate('commerce-taxjar/_refundmodal', [
             'order' => $order,
+            'lineItemTaxes' => $lineItemTaxes,
             'remaining' => $remaining
         ]);
 
@@ -240,6 +243,7 @@ class OrdersController extends BaseCpController
 
         if (!empty($refundItems)) {
             $taxCategories = Plugin::getInstance()->getTaxCategories();
+            $lineItemTaxes = $this->_getLineItemTaxesByLineItemUid($order);
             $refundItemIds = array_keys($refundItems);
             $refundIds = (new Query())
                 ->select(['id'])
@@ -271,33 +275,38 @@ class OrdersController extends BaseCpController
                         }
                     }
 
+                    // Calculate qty percentage in decimal form for proportioning line item values
                     $qtyRatio = $refundItems[$lineItem->id]['qty'] / $lineItem->qty;
-                    $qtySubtotal = $lineItem->subtotal * $qtyRatio;
-                    $qtyDiscount = Currency::round($lineItem->discount * $qtyRatio);
 
-                    $refundSubtotal = $qtySubtotal + $qtyDiscount;
-                    $refundTax = Currency::round($lineItem->tax * $qtyRatio);
+                    // Calculate proportioned line item price and discount
+                    $qtySubtotal = $lineItem->salePrice * $refundItems[$lineItem->id]['qty'];
+                    $qtyDiscount = $lineItem->discount < 0 ? $lineItem->discount * $qtyRatio : $lineItem->discount;
 
-                    $totalItems += $refundSubtotal;
-                    $totalTax += $refundTax;
+                    // Calculate proportioned line item taxes
+                    $lineItemTax = isset($lineItemTaxes[$lineItem->uid]) ? $lineItemTaxes[$lineItem->uid] : $lineItem->tax;
+                    $qtyTax = $lineItemTax > 0 ? $lineItemTax * $qtyRatio : $lineItemTax;
+
+                    // Store proportioned amounts in refund totals
+                    $totalItems += ($qtySubtotal + $qtyDiscount);
+                    $totalTax += $qtyTax;
 
                     // Build line item params while we're here
                     $category = $taxCategories->getTaxCategoryById($lineItem->taxCategoryId);
                     $lineItemsParams[] = [
-                        'id' => $lineItem->id,
+                        'id' => $lineItem->uid,
                         'quantity' => $refundItems[$lineItem->id]['qty'],
-                        'unit_price' => $qtySubtotal * -1,
-                        'discount' => $qtyDiscount,
-                        'sales_tax' => $refundTax * -1,
+                        'unit_price' => Currency::round($lineItem->salePrice * -1),
+                        'discount' => Currency::round($qtyDiscount),
+                        'sales_tax' => Currency::round($qtyTax * -1),
                         'product_tax_code' => $category && $category->handle !== 'general' ? $category->handle : null,
                         'product_identifier' => $lineItem->sku,
-                        'descripton' => $lineItem->description
+                        'description' => $lineItem->description
                     ];
                 }
             }
         }
 
-        $totalRefund = $totalItems + $totalTax + $shipping - $deduction;
+        $totalRefund = Currency::round($totalItems + $totalTax + $shipping - $deduction);
         // Check that total refund doesn't exceed total paid
         if ($totalRefund > $order->totalPaid) {
             $this->setFailFlash(Craft::t('commerce-taxjar', 'Refund can not exceed total paid.'));
@@ -372,9 +381,9 @@ class OrdersController extends BaseCpController
             'transaction_id' => $transaction_id,
             'transaction_date' => date('c'),
             'transaction_reference_id' => $order->id,
-            'amount' => ($totalItems + $shipping) * -1,
-            'shipping' => $shipping * -1,
-            'sales_tax' => $totalTax * -1,
+            'amount' => Currency::round(($totalItems + $shipping) * -1),
+            'shipping' => Currency::round($shipping * -1),
+            'sales_tax' => Currency::round($totalTax * -1),
             'line_items' => $lineItemsParams
         ];
         $refundData = array_merge($from, $to, $refundParams);
@@ -438,5 +447,31 @@ class OrdersController extends BaseCpController
         $orderData = array_merge($from, $to, $amounts, $orderParams);
 
         return $orderData;
+    }
+
+    /**
+     * @param Order $order
+     * @return array
+     */
+    private function _getLineItemTaxesByLineItemUid(Order $order): array
+    {
+        $adjustments = $order->getAdjustmentsByType('tax');
+        $taxes = [];
+
+        foreach ($adjustments as $adjustment) {
+            if (!$adjustment->lineItemId && !empty($adjustment->sourceSnapshot)) {
+                if ($adjustment->amount == 0 && !isset($adjustment->sourceSnapshot['breakdown'])) {
+                    foreach ($order->lineItems as $lineItem) {
+                        $taxes[$lineItem->uid] = 0.0000;
+                    }
+                } else {
+                    foreach ($adjustment->sourceSnapshot['breakdown']['line_items'] as $lineItem) {
+                        $taxes[$lineItem['id']] = $lineItem['tax_collectable'];
+                    }
+                }
+            }
+        }
+
+        return $taxes;
     }
 }

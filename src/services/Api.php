@@ -15,17 +15,22 @@ use craft\commerce\taxjar\TaxJar;
 use yii\base\Component;
 
 /**
- * TaxJar tax category service.
+ * TaxJar API service.
  *
  * @author Pixel & Tonic, Inc. <support@pixelandtonic.com>
  * @since 1.0
  *
  *
  * @property \TaxJar\Client $client
- * @property mixed $categories
  */
 class Api extends Component
 {
+    // Constants
+    // =========================================================================
+
+    const TYPE_FROM = 'from';
+    const TYPE_TO = 'to';
+
     // Properties
     // =========================================================================
 
@@ -68,14 +73,7 @@ class Api extends Component
     public function getFromParams(): array
     {
         $storeLocation = Plugin::getInstance()->getAddresses()->getStoreLocationAddress();
-
-        return [
-            'from_country' => $storeLocation->getCountry()->iso ?? '',
-            'from_zip' => $storeLocation->zipCode ?? '',
-            'from_state' => $storeLocation->getState()->abbreviation ?? '',
-            'from_city' => $storeLocation->city ?? '',
-            'from_street' => $storeLocation->address1 ?? ''
-        ];
+        return $this->_getAddressParams(self::TYPE_FROM, $storeLocation);
     }
 
     /**
@@ -84,13 +82,7 @@ class Api extends Component
      */
     public function getToParams(Address $address): array
     {
-        return [
-            'to_country' => $address->getCountry()->iso ?? '',
-            'to_zip' => $address->zipCode ?? '',
-            'to_state' => $address->getState()->abbreviation ?? '',
-            'to_city' => $address->city ?? '',
-            'to_street' => $address->address1 ?? ''
-        ];
+        return $this->_getAddressParams(self::TYPE_TO, $address);
     }
 
     /**
@@ -120,7 +112,7 @@ class Api extends Component
         foreach ($lineItems as $i => $lineItem) {
             $category = $taxCategories->getTaxCategoryById($lineItem->taxCategoryId);
             $lineItemParams = [
-                'id' => $lineItem->id ?: "temp-{$lineItem->orderId}-{$i}",
+                'id' => $lineItem->uid, // Use UID as it's a consistent identifier even when line item is not yet saved
                 'quantity' => $lineItem->qty,
                 'unit_price' => $lineItem->salePrice,
                 'discount' => $lineItem->getDiscount() < 0 ? $lineItem->getDiscount() * -1 : null,
@@ -137,5 +129,21 @@ class Api extends Component
         }
 
         return $lineItemsParams;
+    }
+
+    /**
+     * @param string $type
+     * @param Address $address
+     * @return array
+     */
+    private function _getAddressParams(string $type, Address $address): array
+    {
+        return [
+            $type . '_country' => $address->getCountry()->iso,
+            $type . '_zip' => $address->zipCode,
+            $type . '_state' => $address->getState()->abbreviation,
+            $type . '_city' => $address->city,
+            $type . '_street' => $address->address1
+        ];
     }
 }
