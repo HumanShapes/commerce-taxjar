@@ -70,11 +70,12 @@ class Api extends Component
     /**
      * @return array
      */
-    public function getFromParams(Address $address = null): array
+    public function getFromParams(): array
     {
-        if (!$address) {
-            $address = Plugin::getInstance()->getAddresses()->getStoreLocationAddress();
-        }
+        // if (!$address) {
+        //     $address = Plugin::getInstance()->getAddresses()->getStoreLocationAddress();
+        // }
+        $address = Plugin::getInstance()->getAddresses()->getStoreLocationAddress();
         return $this->_getAddressParams(self::TYPE_FROM, $address);
     }
 
