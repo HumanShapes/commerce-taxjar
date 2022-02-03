@@ -51,6 +51,11 @@ class TaxJar extends Component implements AdjusterInterface
     private $_address;
 
     /**
+     * @var Address
+     */
+    private $_fromAddress;
+
+    /**
      * @var mixed
      */
     private $_taxesByOrderHash;
@@ -81,14 +86,17 @@ class TaxJar extends Component implements AdjusterInterface
             }
         }
 
+        // NOTE: (Cody / Noihsaf Change) Make sure we allow the fromAddress to be set and updated
         $event = new SetAddressForTaxEvent([
             'order' => $this->_order,
-            'address' => $this->_address
+            'address' => $this->_address,
+            'fromAddress' => $this->_fromAddress
         ]);
 
         Event::trigger(static::class, self::SET_ADDRESS_FOR_TAX_EVENT, $event);
 
         $this->_address = $event->address;
+        $this->_fromAddress = $event->fromAddress;
 
         if (!$this->_address || !$this->_order->getLineItems()) {
             return [];
@@ -170,7 +178,7 @@ class TaxJar extends Component implements AdjusterInterface
             $api = TaxJarPlugin::getInstance()->getApi();
 
             $orderParams = array_merge(
-                $api->getFromParams(),
+                $api->getFromParams($this->_fromAddress),
                 $api->getToParams($this->_address),
                 $api->getAmountsParams($this->_order, false)
             );

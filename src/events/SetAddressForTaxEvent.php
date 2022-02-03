@@ -13,4 +13,5 @@ class SetAddressForTaxEvent extends Event
 {
     public $order;
     public $address;
+    public $fromAddress;
 }
