@@ -1,4 +1,5 @@
 <?php
+
 /**
  * @link https://craftcms.com/
  * @copyright Copyright (c) Pixel & Tonic, Inc.
@@ -9,8 +10,8 @@ namespace craft\commerce\taxjar\events;
 
 use yii\base\Event;
 
-class SetAddressForTaxEvent extends Event
-{
+class SetAddressForTaxEvent extends Event {
     public $order;
     public $address;
+    public $fromAddress;
 }

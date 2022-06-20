@@ -1,4 +1,5 @@
 <?php
+
 /**
  * @link https://craftcms.com/
  * @copyright Copyright (c) Pixel & Tonic, Inc.
@@ -29,8 +30,7 @@ use TaxJar\Exception;
  *
  * @property Validator $vatValidator
  */
-class TaxJar extends Component implements AdjusterInterface
-{
+class TaxJar extends Component implements AdjusterInterface {
     // Constants
     // =========================================================================
 
@@ -51,6 +51,11 @@ class TaxJar extends Component implements AdjusterInterface
     private $_address;
 
     /**
+     * @var Address
+     */
+    private $_fromAddress;
+
+    /**
      * @var mixed
      */
     private $_taxesByOrderHash;
@@ -61,8 +66,7 @@ class TaxJar extends Component implements AdjusterInterface
     /**
      * @inheritdoc
      */
-    public function adjust(Order $order): array
-    {
+    public function adjust(Order $order): array {
         $this->_order = $order;
 
         $this->_address = $this->_order->getShippingAddress();
@@ -81,14 +85,17 @@ class TaxJar extends Component implements AdjusterInterface
             }
         }
 
+        // NOTE: (Cody / Noihsaf Change) Make sure we allow the fromAddress to be set and updated
         $event = new SetAddressForTaxEvent([
             'order' => $this->_order,
-            'address' => $this->_address
+            'address' => $this->_address,
+            'fromAddress' => $this->_fromAddress
         ]);
 
         Event::trigger(static::class, self::SET_ADDRESS_FOR_TAX_EVENT, $event);
 
         $this->_address = $event->address;
+        $this->_fromAddress = $event->fromAddress;
 
         if (!$this->_address || !$this->_order->getLineItems()) {
             return [];
@@ -128,15 +135,15 @@ class TaxJar extends Component implements AdjusterInterface
     /**
      * @param Order $order
      */
-    private function _getOrderHash()
-    {
+    private function _getOrderHash() {
         $number = $this->_order->number;
         $lineItems = '';
         $address = '';
         $count = 0;
         foreach ($this->_order->getLineItems() as $item) {
             $count++;
-            $lineItems = $count . ':' . $item->getOptionsSignature() . ':' . $item->qty . ':' . $item->getSubtotal();
+            // NOTE: (Cody / Noihsaf Change) Make sure $item->taxCategoryId is being accounted for here (when pulling in changes from upstream)
+            $lineItems = $count . ':' . $item->getOptionsSignature() . ':' . $item->qty . ':' . $item->getSubtotal() . ':' . $item->taxCategoryId;
         }
         $price = $this->_order->getTotalPrice();
 
@@ -152,8 +159,7 @@ class TaxJar extends Component implements AdjusterInterface
         return md5($number . ':' . $lineItems . ':' . $address . ':' . $price);
     }
 
-    private function _getOrderTaxData()
-    {
+    private function _getOrderTaxData() {
         $orderHash = $this->_getOrderHash();
 
         // Do we already have it on this request?
@@ -169,7 +175,7 @@ class TaxJar extends Component implements AdjusterInterface
             $api = TaxJarPlugin::getInstance()->getApi();
 
             $orderParams = array_merge(
-                $api->getFromParams(),
+                $api->getFromParams($this->_fromAddress),
                 $api->getToParams($this->_address),
                 $api->getAmountsParams($this->_order, false)
             );
@@ -189,8 +195,7 @@ class TaxJar extends Component implements AdjusterInterface
      * @param float $rate
      * @return string
      */
-    private function _getPercent(float $rate): string
-    {
+    private function _getPercent(float $rate): string {
         return ($rate * 100) . '%';
     }
 }

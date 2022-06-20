@@ -1,4 +1,5 @@
 <?php
+
 /**
  * @link https://craftcms.com/
  * @copyright Copyright (c) Pixel & Tonic, Inc.
@@ -23,8 +24,7 @@ use yii\base\Component;
  *
  * @property \TaxJar\Client $client
  */
-class Api extends Component
-{
+class Api extends Component {
     // Constants
     // =========================================================================
 
@@ -42,8 +42,7 @@ class Api extends Component
     /**
      *
      */
-    public function init()
-    {
+    public function init() {
         $apiKey = TaxJar::getInstance()->getSettings()->apiKey;
         $this->_client = Client::withApiKey($apiKey);
         if (TaxJar::getInstance()->getSettings()->useSandbox) {
@@ -54,34 +53,33 @@ class Api extends Component
     /**
      * @return mixed
      */
-    public function getCategories()
-    {
+    public function getCategories() {
         return $this->_client->categories();
     }
 
     /**
      * @return Client
      */
-    public function getClient()
-    {
+    public function getClient() {
         return $this->_client;
     }
 
     /**
      * @return array
      */
-    public function getFromParams(): array
-    {
-        $storeLocation = Plugin::getInstance()->getAddresses()->getStoreLocationAddress();
-        return $this->_getAddressParams(self::TYPE_FROM, $storeLocation);
+    public function getFromParams(): array {
+        // if (!$address) {
+        //     $address = Plugin::getInstance()->getAddresses()->getStoreLocationAddress();
+        // }
+        $address = Plugin::getInstance()->getAddresses()->getStoreLocationAddress();
+        return $this->_getAddressParams(self::TYPE_FROM, $address);
     }
 
     /**
      * @param Address $address
      * @return array
      */
-    public function getToParams(Address $address): array
-    {
+    public function getToParams(Address $address): array {
         return $this->_getAddressParams(self::TYPE_TO, $address);
     }
 
@@ -90,8 +88,7 @@ class Api extends Component
      * @param bool $includeAll
      * @return array
      */
-    public function getAmountsParams(Order $order, bool $includeAll = true): array
-    {
+    public function getAmountsParams(Order $order, bool $includeAll = true): array {
         return [
             'amount' => $order->getItemSubtotal() + $order->getTotalDiscount() + $order->getTotalShippingCost(),
             'shipping' => $order->getTotalShippingCost(),
@@ -104,8 +101,7 @@ class Api extends Component
      * @param bool $includeAll
      * @return array
      */
-    public function getLineItemsParams(Order $order, bool $includeAll = true): array
-    {
+    public function getLineItemsParams(Order $order, bool $includeAll = true): array {
         $lineItemsParams = [];
         $taxCategories = Plugin::getInstance()->getTaxCategories();
         if ($includeAll) {
@@ -138,8 +134,7 @@ class Api extends Component
      * @param Order $order
      * @return array
      */
-    public function getLineItemTaxesByLineItemUid(Order $order): array
-    {
+    public function getLineItemTaxesByLineItemUid(Order $order): array {
         $adjustments = $order->getAdjustmentsByType('tax');
         $taxes = [];
 
@@ -165,8 +160,7 @@ class Api extends Component
      * @param Address $address
      * @return array
      */
-    private function _getAddressParams(string $type, Address $address): array
-    {
+    private function _getAddressParams(string $type, Address $address): array {
         return [
             $type . '_country' => $address->getCountry()->iso,
             $type . '_zip' => $address->zipCode,

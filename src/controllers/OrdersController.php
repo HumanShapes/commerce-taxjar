@@ -1,4 +1,5 @@
 <?php
+
 /**
  * @link https://craftcms.com/
  * @copyright Copyright (c) Pixel & Tonic, Inc.
@@ -27,14 +28,12 @@ use yii\web\Response;
  * @author Pixel & Tonic, Inc. <support@pixelandtonic.com>
  * @since 1.0
  */
-class OrdersController extends BaseCpController
-{
+class OrdersController extends BaseCpController {
     /**
      * @throws HttpException
      * @throws InvalidConfigException
      */
-    public function init()
-    {
+    public function init() {
         parent::init();
 
         $this->requirePermission('commerce-manageOrders');
@@ -43,8 +42,7 @@ class OrdersController extends BaseCpController
     /**
      * @return Response
      */
-    public function actionSend(): Response
-    {
+    public function actionSend(): Response {
         $this->requireAcceptsJson();
 
         $id = Craft::$app->getRequest()->getParam('id');
@@ -109,8 +107,7 @@ class OrdersController extends BaseCpController
     /**
      * @return Response
      */
-    public function actionDelete(): Response
-    {
+    public function actionDelete(): Response {
         $this->requireAcceptsJson();
 
         $id = Craft::$app->getRequest()->getParam('id');
@@ -133,7 +130,7 @@ class OrdersController extends BaseCpController
         foreach ($refunds as $refund) {
             try {
                 $client->deleteRefund($refund->transactionId);
-            } catch (\Exception $exception){
+            } catch (\Exception $exception) {
                 Craft::error($exception->getMessage(), __METHOD__);
                 return $this->asErrorJson(Craft::t('commerce-taxjar', 'Could not delete refund transaction'));
             }
@@ -158,8 +155,7 @@ class OrdersController extends BaseCpController
      * @throws RuntimeError
      * @throws SyntaxError
      */
-    public function actionGetRefundModal(): Response
-    {
+    public function actionGetRefundModal(): Response {
         $this->requireAcceptsJson();
         $view = $this->getView();
 
@@ -210,15 +206,14 @@ class OrdersController extends BaseCpController
         ]);
     }
 
-    public function actionRefund()
-    {
+    public function actionRefund() {
         $this->requirePermission('commerce-refundPayment');
         $this->requirePostRequest();
 
         $plugin = Plugin::getInstance();
         $api = TaxJar::getInstance()->getApi();
         $orderId = $this->request->getBodyParam('orderId');
-        $refundItems = array_filter($this->request->getBodyParam('refunds'), function($var) {
+        $refundItems = array_filter($this->request->getBodyParam('refunds'), function ($var) {
             return !empty($var['qty']);
         });
         $shipping = (float)$this->request->getBodyParam('shipping');
@@ -315,7 +310,7 @@ class OrdersController extends BaseCpController
             return null;
         }
 
-        $payments = array_filter($order->transactions, function($transaction) {
+        $payments = array_filter($order->transactions, function ($transaction) {
             return $transaction->canRefund();
         });
 
@@ -433,8 +428,7 @@ class OrdersController extends BaseCpController
      * @param Order $order
      * @return array
      */
-    private function _getOrderData(Order $order): array
-    {
+    private function _getOrderData(Order $order): array {
         $api = TaxJar::getInstance()->getApi();
         $from = $api->getFromParams();
         $to = $api->getToParams($order->getShippingAddress());
@@ -447,5 +441,30 @@ class OrdersController extends BaseCpController
         $orderData = array_merge($from, $to, $amounts, $orderParams);
 
         return $orderData;
+    }
+
+    /**
+     * @param Order $order
+     * @return array
+     */
+    private function _getLineItemTaxesByLineItemUid(Order $order): array {
+        $adjustments = $order->getAdjustmentsByType('tax');
+        $taxes = [];
+
+        foreach ($adjustments as $adjustment) {
+            if (!$adjustment->lineItemId && !empty($adjustment->sourceSnapshot)) {
+                if ($adjustment->amount == 0 && !isset($adjustment->sourceSnapshot['breakdown'])) {
+                    foreach ($order->lineItems as $lineItem) {
+                        $taxes[$lineItem->uid] = 0.0000;
+                    }
+                } else {
+                    foreach ($adjustment->sourceSnapshot['breakdown']['line_items'] as $lineItem) {
+                        $taxes[$lineItem['id']] = $lineItem['tax_collectable'];
+                    }
+                }
+            }
+        }
+
+        return $taxes;
     }
 }
