@@ -56,18 +56,18 @@ class TaxJar extends BasePlugin
         $this->_registerRoutes();
         $this->_registerHandlers();
 
-        Craft::$app->view->hook('cp.commerce.order.edit.order-secondary-actions', function(array &$context) {
-            if ($context['order']->isCompleted) {
-                $view = Craft::$app->getView();
-                $view->registerAssetBundle(Actions::class);
-                $html = $view->renderTemplate('commerce-taxjar/_actions', [
-                    'order' => $context['order'],
-                    'orderId' => $context['orderId']
-                ]);
+        // Craft::$app->view->hook('cp.commerce.order.edit.order-secondary-actions', function(array &$context) {
+        //     if ($context['order']->isCompleted) {
+        //         $view = Craft::$app->getView();
+        //         $view->registerAssetBundle(Actions::class);
+        //         $html = $view->renderTemplate('commerce-taxjar/_actions', [
+        //             'order' => $context['order'],
+        //             'orderId' => $context['orderId']
+        //         ]);
 
-                return $html;
-            }
-        });
+        //         return $html;
+        //     }
+        // });
 
         parent::init();
     }
