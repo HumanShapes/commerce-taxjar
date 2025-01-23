@@ -1,5 +1,5 @@
 {
-    "name": "jmauzyk/commerce-taxjar",
+    "name": "craftcms/commerce-taxjar",
     "description": "TaxJar Integration for Craft Commerce",
     "type": "craft-plugin",
     "version": "1.0.5.3",
