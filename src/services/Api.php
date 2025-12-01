@@ -96,7 +96,7 @@ class Api extends Component
     public function getAmountsParams(Order $order, bool $includeAll = true): array
     {
         return [
-            'amount' => $order->getItemSubtotal() + $order->getTotalDiscount() + $order->getTotalShippingCost(),
+            'amount' => $order->getItemSubtotal() + $order->getTotalDiscount(),
             'shipping' => $order->getTotalShippingCost(),
             'line_items' => $this->getLineItemsParams($order->getLineItems(), $includeAll)
         ];

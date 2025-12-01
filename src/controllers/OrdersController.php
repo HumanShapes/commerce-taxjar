@@ -464,7 +464,7 @@ class OrdersController extends BaseCpController
                     foreach ($order->lineItems as $lineItem) {
                         $taxes[$lineItem->uid] = 0.0000;
                     }
-                } else {
+                } elseif (isset($adjustment->sourceSnapshot['breakdown'])) {
                     foreach ($adjustment->sourceSnapshot['breakdown']['line_items'] as $lineItem) {
                         $taxes[$lineItem['id']] = $lineItem['tax_collectable'];
                     }
