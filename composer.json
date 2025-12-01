@@ -37,5 +37,11 @@
     "hasCpSettings": false,
     "hasCpSection": false,
     "class": "craft\\commerce\\taxjar\\TaxJar"
+  },
+  "config": {
+    "allow-plugins": {
+      "yiisoft/yii2-composer": true,
+      "craftcms/plugin-installer": true
+    }
   }
 }
